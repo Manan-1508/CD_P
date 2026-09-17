@@ -1,9 +1,5 @@
 # OptiTAC: Intermediate Code (Three-Address Code) Optimization Engine
 
-**Course:** BCSE307P - Compiler Design Laboratory  
-**Author:** Manan Sangwan  
-**Registration No:** 24BCE2277  
-
 ---
 
 ## Overview
