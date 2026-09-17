@@ -1,0 +1,16 @@
+# Ignore slides and document files
+*.pptx
+*.ppt
+*.docx
+*.doc
+*.pdf
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments & IDE
+.vscode/
+.idea/
+*.swp
