@@ -17,6 +17,7 @@ __pycache__/
 
 # User raw screenshots
 user_screenshots/
+code_and_output images/
 
 # Temporary generated graph files
 *.dot
