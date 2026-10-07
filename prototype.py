@@ -1,10 +1,9 @@
 """
 ================================================================================
 OptiTAC: Intermediate Code (Three-Address Code) Optimization & Visualizer Engine
-Course: BCSE307P - Compiler Design Laboratory
-Student: Manan Sangwan | Reg No: 24BCE2277
+Reference Prototype Implementation
 ================================================================================
-Phase 1 Working Prototype:
+Core Baseline Features:
 - Lexical parsing of Three-Address Code (TAC) into Quadruples (op, arg1, arg2, res)
 - Leader Identification Algorithm & Basic Block Partitioning
 - Constant Folding Pass (e.g. 4 * 2 -> 8)
@@ -297,8 +296,7 @@ class Optimizer:
 # ----------------------------------------------------------------------
 def run_pipeline(tac_code: str):
     print("=" * 76)
-    print("  OptiTAC: Three-Address Code Optimization Engine (BCSE307P Lab)")
-    print("  Author: Manan Sangwan  |  Registration No: 24BCE2277")
+    print("  OptiTAC: Intermediate Code (TAC) Optimization Engine (Reference Prototype)")
     print("=" * 76)
 
     raw_quads = TACParser.parse_program(tac_code)
@@ -353,7 +351,7 @@ def run_pipeline(tac_code: str):
     print(f"  * Dead Temporaries Removed     : {total_stats['dead_removed']}")
     print(f"  * Total Basic Blocks Formed    : {len(blocks)}")
     print("=" * 76)
-    print("  Status: PHASE 1 PROTOTYPE TEST PASSED SUCCESSFULLY\n")
+    print("  Status: REFERENCE PROTOTYPE PIPELINE EXECUTION COMPLETED\n")
 
 
 SAMPLE_TAC = """

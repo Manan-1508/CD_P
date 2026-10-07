@@ -30,8 +30,7 @@ if sys.platform == "win32":
 def display_header():
     print("=" * 80)
     print("  OptiTAC: Intermediate Code (TAC) Optimization & Analysis Engine")
-    print("  BCSE307P - Compiler Design Laboratory  |  Review 2: Core Implementation")
-    print("  Author: Manan Sangwan   |   Registration No: 24BCE2277")
+    print("  Modular Control Flow Analysis, Data-Flow Solvers & Multi-Pass Transformations")
     print("=" * 80)
 
 
@@ -164,24 +163,27 @@ def interactive_menu():
 
 def main():
     parser = argparse.ArgumentParser(
-        description="OptiTAC: Intermediate Code (TAC) Optimization & Analysis Engine (Review 2)"
+        description="OptiTAC: Intermediate Code (TAC) Optimization & Analysis Engine"
     )
     parser.add_argument("--file", "-f", help="Path to input .tac file")
     parser.add_argument("--no-cfg", action="store_true", help="Disable CFG visualization")
     parser.add_argument("--no-dataflow", action="store_true", help="Disable Data-Flow analysis tables")
     parser.add_argument("--dot", help="Path to export Graphviz .dot file")
+    parser.add_argument("--code", "-c", help="Direct TAC code string (separate by semicolons or newlines)")
     parser.add_argument("--benchmark", "-b", choices=["1", "2", "3", "4", "5"], help="Run benchmark number directly")
 
     args = parser.parse_args()
 
-    if not args.file and not args.benchmark:
+    if not args.file and not args.benchmark and not args.code:
         interactive_menu()
         return
 
     display_header()
     tac_content = ""
 
-    if args.file:
+    if args.code:
+        tac_content = args.code.replace("\\n", "\n")
+    elif args.file:
         if not os.path.exists(args.file):
             print(f"[!] Error: File not found: {args.file}")
             sys.exit(1)

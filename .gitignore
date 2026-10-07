@@ -15,8 +15,5 @@ __pycache__/
 .idea/
 *.swp
 
-# Screenshots and media
-images/
-*.png
-*.jpg
-*.jpeg
+# User raw screenshots
+user_screenshots/

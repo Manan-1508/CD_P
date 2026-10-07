@@ -131,10 +131,16 @@ class TACParser:
         quads: List[Quadruple] = []
         # Pre-filter multi-line comments /* ... */
         clean_text = re.sub(r"/\*.*?\*/", "", tac_text, flags=re.DOTALL)
-        for idx, line in enumerate(clean_text.splitlines(), start=1):
-            q = cls.parse_line(line, idx)
-            if q is not None:
-                quads.append(q)
+        line_counter = 1
+        for raw_line in clean_text.splitlines():
+            sublines = [s.strip() for s in raw_line.split(";") if s.strip()]
+            if not sublines:
+                continue
+            for sub in sublines:
+                q = cls.parse_line(sub, line_counter)
+                if q is not None:
+                    quads.append(q)
+            line_counter += 1
         return quads
 
     @classmethod
