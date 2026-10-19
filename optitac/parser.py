@@ -1,21 +1,48 @@
 """
-OptiTAC: Dynamic Three-Address Code (TAC) Parser
+OptiTAC: Dynamic Three-Address Code (TAC) Parser & Diagnostics
 Parses TAC source strings and input files into Quadruple sequences.
 Supports labels, arithmetic, logical, branching, function calls, and array operations.
+Includes comprehensive syntactic and semantic error diagnostics with actionable error hints.
 """
 
 import re
-from typing import List, Optional
+from typing import List, Optional, Tuple, Dict, Set
+from dataclasses import dataclass
 from optitac.ir import Quadruple
 
 
+@dataclass
+class Diagnostic:
+    """Represents a compiler error or warning with source context and helpful hints."""
+    severity: str  # 'ERROR' or 'WARNING'
+    line_no: int
+    raw_line: str
+    message: str
+    suggestion: str = ""
+
+    def format(self) -> str:
+        tag = "[COMPILER ERROR]" if self.severity == "ERROR" else "[COMPILER WARNING]"
+        out = f"  {tag} Line {self.line_no}: {self.message}\n         Source : {self.raw_line}"
+        if self.suggestion:
+            out += f"\n         Hint   : {self.suggestion}"
+        return out
+
+
+class ParseDiagnosticError(Exception):
+    """Raised when strict parsing fails due to compiler errors."""
+    def __init__(self, diagnostics: List[Diagnostic]):
+        self.diagnostics = diagnostics
+        msg = f"Compilation halted with {len(diagnostics)} diagnostic error(s):\n" + "\n".join(d.format() for d in diagnostics)
+        super().__init__(msg)
+
+
 class TACParser:
-    """Robust dynamic parser for intermediate Three-Address Code."""
+    """Robust dynamic parser and semantic validator for Three-Address Code."""
 
     # Regular Expressions for TAC Grammar
     LABEL_RE = re.compile(r"^([a-zA-Z_]\w*)\s*:$")
     ASSIGN_BIN_RE = re.compile(
-        r"^([a-zA-Z_]\w*)\s*=\s*([a-zA-Z0-9_\-\.]+)\s*([\+\-\*/%&\|\^<>!=]=?|==|!=)\s*([a-zA-Z0-9_\-\.]+)$"
+        r"^([a-zA-Z_]\w*)\s*=\s*([a-zA-Z0-9_\-\.]+)\s*([\+\-\*/%&\|\^<>!=]=?|==|!=|<<|>>)\s*([a-zA-Z0-9_\-\.]+)$"
     )
     ASSIGN_UNARY_RE = re.compile(r"^([a-zA-Z_]\w*)\s*=\s*([\+\-!~])\s*([a-zA-Z0-9_\-\.]+)$")
     ARRAY_READ_RE = re.compile(r"^([a-zA-Z_]\w*)\s*=\s*([a-zA-Z_]\w*)\[\s*([a-zA-Z0-9_\-\.]+)\s*\]$")
@@ -122,19 +149,104 @@ class TACParser:
             target = m.group(1)
             return Quadruple(op="goto", arg1=target, arg2=None, res="", raw=cleaned, line_no=line_no)
 
-        # Fallback to RAW instruction
+        # Fallback to RAW instruction (Unmatched grammar)
         return Quadruple(op="RAW", arg1=cleaned, arg2=None, res="", raw=cleaned, line_no=line_no)
+
+    @classmethod
+    def validate_program(cls, quads: List[Quadruple]) -> List[Diagnostic]:
+        """
+        Runs syntactic and semantic diagnostics on parsed Quadruples.
+        Identifies unparsed syntax, undefined jump labels, duplicate labels, and division by zero.
+        """
+        diagnostics: List[Diagnostic] = []
+        defined_labels: Dict[str, int] = {}
+
+        # First pass: collect label definitions and detect duplicates
+        for q in quads:
+            if q.op == "LABEL":
+                lbl = q.arg1 or ""
+                if lbl in defined_labels:
+                    diagnostics.append(
+                        Diagnostic(
+                            severity="ERROR",
+                            line_no=q.line_no,
+                            raw_line=q.raw,
+                            message=f"Duplicate label definition '{lbl}'.",
+                            suggestion=f"Label '{lbl}' was already defined at line {defined_labels[lbl]}. Rename this label.",
+                        )
+                    )
+                else:
+                    defined_labels[lbl] = q.line_no
+
+        # Second pass: check syntax errors, undefined jump targets, division by zero
+        has_return = False
+        for q in quads:
+            # 1. Unrecognized grammar
+            if q.op == "RAW":
+                diagnostics.append(
+                    Diagnostic(
+                        severity="ERROR",
+                        line_no=q.line_no,
+                        raw_line=q.raw,
+                        message="Invalid Three-Address Code (TAC) syntax.",
+                        suggestion="Check operand spacing or operators. Expected format: 'dest = arg1 op arg2' or 'goto L'.",
+                    )
+                )
+
+            # 2. Undefined Branch Labels
+            elif q.is_branch():
+                target = q.res if q.op.startswith("if_") else q.arg1
+                if target and target not in defined_labels:
+                    diagnostics.append(
+                        Diagnostic(
+                            severity="ERROR",
+                            line_no=q.line_no,
+                            raw_line=q.raw,
+                            message=f"Branch target label '{target}' is undefined in the program.",
+                            suggestion=f"Define the target label '{target}:' before jumping to it.",
+                        )
+                    )
+
+            # 3. Compile-time Division by Zero
+            elif q.op in {"/", "%"} and q.arg2 == "0":
+                diagnostics.append(
+                    Diagnostic(
+                        severity="ERROR",
+                        line_no=q.line_no,
+                        raw_line=q.raw,
+                        message="Compile-time division or modulo by zero detected.",
+                        suggestion="Ensure divisor constant is non-zero to avoid hardware traps.",
+                    )
+                )
+
+            if q.is_return():
+                has_return = True
+
+        if not has_return and quads:
+            diagnostics.append(
+                Diagnostic(
+                    severity="WARNING",
+                    line_no=quads[-1].line_no,
+                    raw_line=quads[-1].raw,
+                    message="Missing explicit 'return' statement in program.",
+                    suggestion="Add 'return <variable>' or 'return' at the end of the entry procedure.",
+                )
+            )
+
+        return diagnostics
 
     @classmethod
     def parse_program(cls, tac_text: str) -> List[Quadruple]:
         """Parses a multi-line TAC string into a list of Quadruples."""
         quads: List[Quadruple] = []
-        # Pre-filter multi-line comments /* ... */
         clean_text = re.sub(r"/\*.*?\*/", "", tac_text, flags=re.DOTALL)
         line_counter = 1
         for raw_line in clean_text.splitlines():
-            sublines = [s.strip() for s in raw_line.split(";") if s.strip()]
+            # Strip comments before splitting on semicolons
+            stripped_line = raw_line.split("//")[0].split("#")[0].strip()
+            sublines = [s.strip() for s in stripped_line.split(";") if s.strip()]
             if not sublines:
+                line_counter += 1
                 continue
             for sub in sublines:
                 q = cls.parse_line(sub, line_counter)
@@ -142,6 +254,16 @@ class TACParser:
                     quads.append(q)
             line_counter += 1
         return quads
+
+    @classmethod
+    def parse_with_diagnostics(cls, tac_text: str, strict: bool = False) -> Tuple[List[Quadruple], List[Diagnostic]]:
+        """Parses TAC text and returns both quadruples and diagnostics list."""
+        quads = cls.parse_program(tac_text)
+        diagnostics = cls.validate_program(quads)
+        errors = [d for d in diagnostics if d.severity == "ERROR"]
+        if strict and errors:
+            raise ParseDiagnosticError(errors)
+        return quads, diagnostics
 
     @classmethod
     def parse_file(cls, filepath: str) -> List[Quadruple]:

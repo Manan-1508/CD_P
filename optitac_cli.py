@@ -1,22 +1,29 @@
 """
-OptiTAC: Interactive Command-Line Interface & Demonstration Tool
-Allows running optimizations on benchmark files, custom user files, or direct TAC input.
-Usage:
-    python optitac_cli.py --file benchmarks/01_arithmetic_cse.tac --cfg --dataflow --stats
-    python optitac_cli.py (Interactive Menu Mode)
+OptiTAC: Interactive Command-Line Interface & Complete Pipeline Driver
+Allows running intermediate optimizations, CFG analysis, graph coloring register allocation,
+RISC-V target machine code generation, and bare-metal emulation.
+
+Usage Examples:
+    py optitac_cli.py -b 3 --regalloc --asm --run
+    py optitac_cli.py -c "i = 0; s = 0; L: if i >= 5 goto E; s = s + i; i = i + 1; goto L; E: return s" --run
+    py optitac_cli.py --file err.tac --validate
 """
 
 import sys
 import os
 import argparse
-from typing import List
+from typing import List, Optional
 
 from optitac.ir import Quadruple
-from optitac.parser import TACParser
+from optitac.parser import TACParser, Diagnostic
 from optitac.cfg import ControlFlowGraph
 from optitac.dataflow import AvailableExpressionsAnalysis, LivenessAnalysis
 from optitac.optimizer import Optimizer, OptimizationStats
 from optitac.telemetry import TelemetryReport
+from optitac.regalloc import RegisterAllocator, AllocationResult
+from optitac.codegen import RISCVCodeGenerator
+from optitac.peephole import AssemblyPeepholeOptimizer
+from optitac.emulator import RISCVEmulator
 
 
 if sys.platform == "win32":
@@ -29,8 +36,8 @@ if sys.platform == "win32":
 
 def display_header():
     print("=" * 80)
-    print("  OptiTAC: Intermediate Code (TAC) Optimization & Analysis Engine")
-    print("  Modular Control Flow Analysis, Data-Flow Solvers & Multi-Pass Transformations")
+    print("  OptiTAC: Intermediate Code (TAC) Optimization & Backend Engine")
+    print("  CFG Analysis | Fixed-Point Solvers | Graph Coloring | RISC-V Codegen | Emulator")
     print("=" * 80)
 
 
@@ -49,8 +56,40 @@ def print_code_comparison(orig_quads: List[Quadruple], opt_quads: List[Quadruple
     print(" (* indicates statement optimized, replaced, or eliminated)")
 
 
-def process_tac_program(tac_content: str, show_cfg: bool = True, show_dataflow: bool = True, dot_output: str = None):
-    orig_quads = TACParser.parse_program(tac_content)
+def process_tac_program(
+    tac_content: str,
+    show_cfg: bool = True,
+    show_dataflow: bool = True,
+    show_regalloc: bool = False,
+    show_asm: bool = False,
+    run_emulator: bool = False,
+    spill_k: int = 4,
+    validate_only: bool = False,
+    dot_output: Optional[str] = None,
+):
+    # 0. Parse & Semantic Validation
+    orig_quads, diagnostics = TACParser.parse_with_diagnostics(tac_content)
+
+    errors = [d for d in diagnostics if d.severity == "ERROR"]
+    warnings = [d for d in diagnostics if d.severity == "WARNING"]
+
+    if diagnostics:
+        print("\n" + "=" * 80)
+        print("  PARSER SYNTAX & SEMANTIC DIAGNOSTIC REPORT")
+        print("=" * 80)
+        for d in diagnostics:
+            print(d.format())
+        print("=" * 80)
+
+    if errors:
+        print(f"\n[!] Compilation aborted due to {len(errors)} error(s). Please fix source TAC.")
+        return
+
+    if validate_only:
+        if not diagnostics:
+            print("\n[+] Validation Succeeded: 0 errors, 0 warnings. TAC is fully well-formed.")
+        return
+
     if not orig_quads:
         print("[!] Error: No valid Three-Address Code instructions parsed.")
         return
@@ -98,6 +137,30 @@ def process_tac_program(tac_content: str, show_cfg: bool = True, show_dataflow: 
         with open(dot_output, "w", encoding="utf-8") as f:
             f.write(dot_code)
         print(f"\n[+] CFG Graphviz DOT exported to: {dot_output}")
+
+    # 6. Phase 3: Register Allocation (Graph Coloring)
+    alloc = RegisterAllocator(cfg, k=spill_k).allocate()
+    if show_regalloc or show_asm or run_emulator:
+        print("\n" + alloc.format_report())
+
+    # 7. Phase 3: Target RISC-V Code Generation & Peephole
+    codegen = RISCVCodeGenerator(alloc)
+    raw_asm = codegen.generate(opt_quads)
+    opt_asm, peep_stats = AssemblyPeepholeOptimizer.optimize(raw_asm)
+
+    if show_asm or run_emulator:
+        print("\n" + "=" * 80)
+        print("  TARGET MACHINE CODE GENERATION: RISC-V (RV32I/M)")
+        print(f"  Peephole Reductions: {peep_stats.total_eliminated} redundant instructions eliminated")
+        print("=" * 80)
+        print(opt_asm)
+        print("=" * 80)
+
+    # 8. Phase 3: Execution Simulation on Bare-Metal RISC-V Emulator
+    if run_emulator:
+        emu = RISCVEmulator(opt_asm)
+        result = emu.run()
+        print("\n" + result.format_report())
 
 
 def interactive_menu():
@@ -158,12 +221,19 @@ def interactive_menu():
             print("[!] Invalid choice. Please choose 0-7.")
             continue
 
-        process_tac_program(tac_code, show_cfg=True, show_dataflow=True)
+        process_tac_program(
+            tac_code,
+            show_cfg=True,
+            show_dataflow=True,
+            show_regalloc=True,
+            show_asm=True,
+            run_emulator=True,
+        )
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="OptiTAC: Intermediate Code (TAC) Optimization & Analysis Engine"
+        description="OptiTAC: Intermediate Code (TAC) Optimization & Backend Engine"
     )
     parser.add_argument("--file", "-f", help="Path to input .tac file")
     parser.add_argument("--no-cfg", action="store_true", help="Disable CFG visualization")
@@ -171,6 +241,11 @@ def main():
     parser.add_argument("--dot", help="Path to export Graphviz .dot file")
     parser.add_argument("--code", "-c", help="Direct TAC code string (separate by semicolons or newlines)")
     parser.add_argument("--benchmark", "-b", choices=["1", "2", "3", "4", "5"], help="Run benchmark number directly")
+    parser.add_argument("--regalloc", action="store_true", help="Display Graph-Coloring Register Allocation report")
+    parser.add_argument("--asm", action="store_true", help="Display generated target RISC-V assembly code")
+    parser.add_argument("--run", action="store_true", help="Execute generated RISC-V assembly on bare-metal emulator")
+    parser.add_argument("--spill-k", type=int, default=4, help="Set target physical register count K (default: 4)")
+    parser.add_argument("--validate", action="store_true", help="Perform syntactic and semantic validation checks")
 
     args = parser.parse_args()
 
@@ -205,6 +280,11 @@ def main():
         tac_content,
         show_cfg=not args.no_cfg,
         show_dataflow=not args.no_dataflow,
+        show_regalloc=args.regalloc,
+        show_asm=args.asm,
+        run_emulator=args.run,
+        spill_k=args.spill_k,
+        validate_only=args.validate,
         dot_output=args.dot,
     )
 
