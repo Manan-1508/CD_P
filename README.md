@@ -70,32 +70,25 @@ Built entirely using the **Python Standard Library**, OptiTAC requires zero exte
 
 ---
 
-## Quickstart & CLI Usage
+## Execution Guide: What Command to Run When
 
-### 1. Run the Comprehensive Regression Matrix
-```bash
-python run_tests.py
-```
+Use this reference table to know exactly which command to execute for each demonstration scenario:
 
-### 2. Run the Phase 3 Validation Suite (Valid, Boundary & Error Tests)
-```bash
-python run_phase3_tests.py
-```
-
-### 3. Full End-to-End Pipeline on While-Loop Benchmark (CFG + RegAlloc + RISC-V + Emulation)
-```bash
-python optitac_cli.py -b 3 --regalloc --asm --run
-```
-
-### 4. Interactive Live One-Liner TAC Execution
-```bash
-python optitac_cli.py -c "a = 15; b = 30; c = a * b; return c" --asm --run
-```
-
-### 5. Check Syntax & Semantic Diagnostics
-```bash
-python optitac_cli.py --file tests_phase3/08_err_undefined_label.tac --validate
-```
+| Scenario / Objective | Command to Run | Expected Output & Verification |
+|:---|:---|:---|
+| **1. Regression Benchmark Matrix** | `python run_tests.py` | Shows 5/5 Phase 2 tests passing and outputs the column-wise literature comparison table (Aho, Briggs, Click vs. OptiTAC). |
+| **2. Master Phase 3 Validation Matrix** | `python run_phase3_tests.py` | Runs all 10 Phase 3 test cases across Valid Complex, Boundary, and Error categories (10/10 PASS, 100% success rate). |
+| **3. Full Pipeline on Iterative Loop** | `python optitac_cli.py -b 3 --regalloc --asm --run` | Demonstrates CFG, Dominator sets, natural loop back-edges, register allocation, RISC-V assembly, and emulator returning `280`. |
+| **4. Valid Complex Program (Factorial)** | `python optitac_cli.py --file tests_phase3/01_complex_factorial.tac --regalloc --asm --run` | Compiles and executes $6!$ loop, showing register coloring (t0, t1, t2), RISC-V assembly, and emulator returning `720` in 72 cycles. |
+| **5. Complex Nested Loops Program** | `python optitac_cli.py --file tests_phase3/03_complex_nested_loops.tac --run` | Generates 7-block CFG with dual loop headers, shows inner & outer back-edges, and emulator returning `20` in 214 cycles. |
+| **6. Boundary Case: Zero-Trip Loop** | `python optitac_cli.py --file tests_phase3/05_boundary_zero_trip_loop.tac --run` | Proves loop condition bypass on initial entry; body never executes and returns default value `99` in 26 cycles. |
+| **7. Boundary Case: High Spill Stress** | `python optitac_cli.py --file tests_phase3/06_boundary_high_spill.tac --spill-k 3 --regalloc --asm --run` | Restricts physical registers to $K=3$ on 8 live variables, forcing stack spills (`-4(sp)`), generating `sw`/`lw`, and returning `36`. |
+| **8. Error Diagnostic: Malformed Syntax** | `python optitac_cli.py --file tests_phase3/07_err_syntax_malformed.tac --validate` | Catches syntax error: `[COMPILER ERROR] Line 4: Invalid Three-Address Code (TAC) syntax. Source: t1 = a + * b` with format hint. |
+| **9. Error Diagnostic: Undefined Label** | `python optitac_cli.py --file tests_phase3/08_err_undefined_label.tac --validate` | Catches semantic error: `[COMPILER ERROR] Line 4: Branch target label 'NON_EXISTENT_LABEL' is undefined in the program.` |
+| **10. Error Diagnostic: Division by Zero** | `python optitac_cli.py --file tests_phase3/09_err_division_by_zero.tac --validate` | Catches compile-time arithmetic error: `[COMPILER ERROR] Line 4: Compile-time division or modulo by zero detected.` |
+| **11. Error Diagnostic: Duplicate Label** | `python optitac_cli.py --file tests_phase3/10_err_duplicate_label.tac --validate` | Catches duplicate label definition: `[COMPILER ERROR] Line 9: Duplicate label definition 'CHECK_POINT'. Already defined at line 4.` |
+| **12. Live Interactive One-Liner** | `python optitac_cli.py -c "a = 15; b = 30; c = a * b; return c" --asm --run` | Optimizes custom code on the fly to `return 450` (75% code reduction), generates RISC-V assembly, and executes on emulator. |
+| **13. Interactive Terminal Menu** | `python optitac_cli.py` | Launches interactive numeric menu mode (options 0–7) for guided benchmark selection or manual multi-line TAC input. |
 
 ---
 
